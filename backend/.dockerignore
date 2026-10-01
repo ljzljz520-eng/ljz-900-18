@@ -1,0 +1,7 @@
+vendor
+runtime
+public/uploads
+.env
+.env.*
+*.log
+.DS_Store

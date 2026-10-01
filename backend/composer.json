@@ -1,0 +1,20 @@
+{
+    "name": "hygiene-audit/backend",
+    "description": "Hygiene Audit System Backend",
+    "type": "project",
+    "require": {
+        "php": ">=8.0.0",
+        "topthink/framework": "^8.0",
+        "topthink/think-orm": "^3.0",
+        "endroid/qr-code": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "app\\": "app/"
+        }
+    },
+    "config": {
+        "preferred-install": "dist",
+        "optimize-autoloader": true
+    }
+}

@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #1e293b;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* Element Plus 覆盖 - 与设计系统统一 */
+.el-button--primary {
+  --el-button-bg-color: #0ea5e9;
+  --el-button-border-color: #0ea5e9;
+  --el-button-hover-bg-color: #0284c7;
+  --el-button-hover-border-color: #0284c7;
+}
+
+/* 全局卡片过渡 */
+.admin-section .card,
+.summary-section .summary-card,
+.employees-section .employee-card {
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+.admin-section .card:hover,
+.summary-section .summary-card:hover,
+.employees-section .employee-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}

@@ -1,0 +1,13 @@
+node_modules
+vendor
+.git
+.idea
+.vscode
+dist
+build
+*.log
+.env
+.env.local
+.DS_Store
+backend/runtime
+backend/public/uploads
