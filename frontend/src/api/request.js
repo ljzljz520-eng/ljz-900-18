@@ -77,7 +77,8 @@ export const api = {
   // 1) 旧：data = records[]
   // 2) 新：data = { records: records[], link, qr_code_url }
   createRecords: (data) => request.post('/api/records', data).then((r) => r.data?.data ?? []),
-  deleteRecord: (id) => request.delete(`/api/records/${id}`).then((r) => r.data),
+  deleteRecord: (id, payload) =>
+    request.delete(`/api/records/${id}`, { data: payload || {} }).then((r) => r.data),
   uploadFix: (id, fixImage, token) =>
     request.put(`/api/records/${id}/fix`, { fix_image: fixImage, token }).then((r) => r.data?.data),
   uploadImage: (file, token) => {

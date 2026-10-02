@@ -41,16 +41,24 @@
             v-for="r in existingRecords"
             :key="r.id"
             class="key-tile"
+            :class="{ 'has-fix': !!r.fix_image }"
           >
             <span class="key-badge">#{{ r.sequence_key }}</span>
+            <span v-if="r.fix_image" class="fix-badge">
+              <el-icon><CircleCheckFilled /></el-icon> 已整改
+            </span>
             <div class="key-preview">
               <img :src="imageUrl(r.issue_image)" alt="问题图" @error="(e) => (e.target.style.display = 'none')" />
+            </div>
+            <div v-if="r.fix_image" class="fix-preview" title="关联整改图，删除问题图时将一并移除">
+              <img :src="imageUrl(r.fix_image)" alt="整改图" @error="(e) => (e.target.style.display = 'none')" />
+              <span class="fix-preview-tag">整改图将一并移除</span>
             </div>
             <div class="key-meta">
               <span class="key-item-name">{{ r.item_name_snapshot || r.item?.name }}</span>
               <span class="key-score">-{{ (r.item_score_snapshot ?? r.item?.score) }}分</span>
             </div>
-            <el-button type="danger" text size="small" class="key-delete" @click="deleteRecord(r.id)">
+            <el-button type="danger" text size="small" class="key-delete" @click="deleteRecord(r)">
               <el-icon><Delete /></el-icon> 删除
             </el-button>
           </div>
@@ -215,18 +223,43 @@ async function loadRecords() {
 watch(selectedUserId, loadRecords)
 watch(selectedDate, loadRecords)
 
-async function deleteRecord(id) {
+async function deleteRecord(record) {
+  const hasFix = !!record.fix_image
+  const seq = `#${record.sequence_key}`
+  const itemName = record.item_name_snapshot || record.item?.name || '未命名检查项'
+  const message = hasFix
+    ? `该问题图（${seq} ${itemName}）已上传整改图并已整改完成。\n问题图与整改图为成对关系，删除问题图后整改图将一并移除，员工端不再可见，且不可恢复。\n删除后该员工当日的展示序号会自动重新连续排列。`
+    : `确定删除 ${seq}（${itemName}）的问题图吗？\n删除后该员工当日的展示序号会自动重新连续排列。`
+  let reason = ''
   try {
-    await ElMessageBox.confirm('删除后序号将自动连续重排，确定删除该条？', '确认删除', {
-      confirmButtonText: '删除',
+    const res = await ElMessageBox.prompt(message, hasFix ? '删除问题图（含整改图）' : '确认删除', {
+      confirmButtonText: hasFix ? '我已知晓，一并删除' : '确认删除',
       cancelButtonText: '取消',
       type: 'warning',
+      inputType: 'textarea',
+      inputPlaceholder: '请填写删除原因（必填，将记入操作日志），如：图片误传 / 重复上传 / 现场复核无问题',
+      inputValidator: (val) => (val && val.trim() ? true : '请填写删除原因'),
+      closeOnClickModal: false,
+      customClass: hasFix ? 'delete-with-fix-dialog' : '',
     })
-    await api.deleteRecord(id)
-    await loadRecords()
-    ElMessage.success('已删除，序号已连续')
+    reason = (res.value || '').trim()
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('删除失败')
+    return // 取消
+  }
+  if (!reason) return
+  try {
+    await api.deleteRecord(record.id, {
+      reason,
+      confirm_with_fix: hasFix,
+    })
+    await loadRecords()
+    ElMessage.success(hasFix ? '问题图与整改图已一并删除，序号已重排' : '已删除，序号已重排')
+  } catch (e) {
+    // 后端 409：存在整改图但未带确认标记（并发/旧入口兜底），刷新后重新走确认流程
+    if (e?.response?.data?.data?.has_fix_image) {
+      ElMessage.warning('该问题图已有关联整改图，请确认后再删除')
+      await loadRecords()
+    }
   }
 }
 
@@ -403,6 +436,11 @@ loadItems()
   transition: box-shadow 0.2s;
 }
 
+.key-tile.has-fix {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: linear-gradient(to bottom, rgba(16, 185, 129, 0.06), #f8fafc 40%);
+}
+
 .key-tile:hover {
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
 }
@@ -418,6 +456,53 @@ loadItems()
   font-size: 12px;
   font-weight: 700;
   z-index: 1;
+}
+
+.fix-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(16, 185, 129, 0.95);
+  color: white;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  z-index: 1;
+}
+
+.fix-preview {
+  position: relative;
+  aspect-ratio: 4/3;
+  background: #ecfdf5;
+  border-top: 2px dashed rgba(16, 185, 129, 0.5);
+  overflow: hidden;
+}
+
+.fix-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+.fix-preview-tag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.66);
+  color: #fecaca;
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: center;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .key-preview {
@@ -673,5 +758,33 @@ loadItems()
 
 .preview-dialog :deep(.el-dialog__body) {
   padding: 16px;
+}
+</style>
+
+<style>
+/* ElMessageBox 会被 teleport 到 body，scoped 样式无法命中，需用全局样式 */
+.delete-with-fix-dialog .el-message-box__message p {
+  white-space: pre-line;
+  line-height: 1.7;
+  color: #b91c1c;
+}
+
+.delete-with-fix-dialog .el-message-box__btns .el-button--primary {
+  background-color: #ef4444;
+  border-color: #ef4444;
+}
+
+.delete-with-fix-dialog .el-message-box__btns .el-button--primary:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+}
+
+.el-message-box__message p {
+  white-space: pre-line;
+  line-height: 1.7;
+}
+
+.el-message-box__textarea {
+  margin-top: 10px;
 }
 </style>
