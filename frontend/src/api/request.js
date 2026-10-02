@@ -38,10 +38,14 @@ request.interceptors.response.use(
           window.__auth_redirect = true
           window.location.href = '/login'
         }
-        return Promise.reject(new Error(d.message || '未登录'))
+        return Promise.reject(Object.assign(new Error(d.message || '未登录'), { apiCode: d.code }))
+      }
+      // 业务级 4xx（如 409 需要二次确认）交由调用方处理，这里不弹全局错误
+      if (d.code >= 400 && d.code < 500) {
+        return Promise.reject(Object.assign(new Error(d.message || '请求失败'), { apiCode: d.code, data: d.data }))
       }
       ElMessage.error(d.message || '请求失败')
-      return Promise.reject(new Error(d.message || '请求失败'))
+      return Promise.reject(Object.assign(new Error(d.message || '请求失败'), { apiCode: d.code }))
     }
     return res
   },
@@ -56,6 +60,11 @@ request.interceptors.response.use(
       }
     }
     const msg = err.response?.data?.message || err.message || '网络错误'
+    const bizCode = err.response?.data?.code
+    // 业务级 4xx 交由调用方处理，不弹全局错误
+    if (typeof bizCode === 'number' && bizCode >= 400 && bizCode < 500 && bizCode !== 401) {
+      return Promise.reject(Object.assign(new Error(msg), { apiCode: bizCode, data: err.response?.data?.data }))
+    }
     ElMessage.error(msg)
     return Promise.reject(err)
   }
@@ -77,7 +86,8 @@ export const api = {
   // 1) 旧：data = records[]
   // 2) 新：data = { records: records[], link, qr_code_url }
   createRecords: (data) => request.post('/api/records', data).then((r) => r.data?.data ?? []),
-  deleteRecord: (id) => request.delete(`/api/records/${id}`).then((r) => r.data),
+  deleteRecord: (id, payload) =>
+    request.delete(`/api/records/${id}`, { data: payload || {} }).then((r) => r.data),
   uploadFix: (id, fixImage, token) =>
     request.put(`/api/records/${id}/fix`, { fix_image: fixImage, token }).then((r) => r.data?.data),
   uploadImage: (file, token) => {

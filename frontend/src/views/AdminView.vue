@@ -41,8 +41,12 @@
             v-for="r in existingRecords"
             :key="r.id"
             class="key-tile"
+            :class="{ 'key-tile--paired': !!r.fix_image }"
           >
             <span class="key-badge">#{{ r.sequence_key }}</span>
+            <span v-if="r.fix_image" class="key-fixed-badge">
+              <el-icon><CircleCheckFilled /></el-icon> 已有整改图
+            </span>
             <div class="key-preview">
               <img :src="imageUrl(r.issue_image)" alt="问题图" @error="(e) => (e.target.style.display = 'none')" />
             </div>
@@ -50,7 +54,7 @@
               <span class="key-item-name">{{ r.item_name_snapshot || r.item?.name }}</span>
               <span class="key-score">-{{ (r.item_score_snapshot ?? r.item?.score) }}分</span>
             </div>
-            <el-button type="danger" text size="small" class="key-delete" @click="deleteRecord(r.id)">
+            <el-button type="danger" text size="small" class="key-delete" @click="deleteRecord(r)">
               <el-icon><Delete /></el-icon> 删除
             </el-button>
           </div>
@@ -215,18 +219,55 @@ async function loadRecords() {
 watch(selectedUserId, loadRecords)
 watch(selectedDate, loadRecords)
 
-async function deleteRecord(id) {
+async function promptDeleteReason(record) {
+  const hasFix = !!record.fix_image
+  const message = hasFix
+    ? `问题图 #${record.sequence_key} 已存在对应的整改图。删除问题图后，整改图也会变成不可见并随问题图一起移除，无法恢复。请填写删除原因：`
+    : `删除后该员工的序号将自动连续重排。请填写删除原因：`
   try {
-    await ElMessageBox.confirm('删除后序号将自动连续重排，确定删除该条？', '确认删除', {
-      confirmButtonText: '删除',
+    const { value } = await ElMessageBox.prompt(message, '确认删除', {
+      confirmButtonText: hasFix ? '确认级联删除' : '删除',
       cancelButtonText: '取消',
       type: 'warning',
+      inputType: 'textarea',
+      inputPlaceholder: '请输入删除原因（必填，将记录到操作日志）',
+      inputValidator: (val) => (val && val.trim() ? true : '请填写删除原因'),
+      confirmButtonClass: 'el-button--danger',
+      customClass: hasFix ? 'delete-cascade-confirm' : '',
     })
-    await api.deleteRecord(id)
+    return value.trim()
+  } catch {
+    // 点击取消或关闭弹窗：中止删除
+    return null
+  }
+}
+
+async function deleteRecord(record) {
+  try {
+    const reason = await promptDeleteReason(record)
+    if (reason === null) return
+    await api.deleteRecord(record.id, {
+      reason,
+      confirm_cascade: record.fix_image ? 1 : 0,
+    })
     await loadRecords()
-    ElMessage.success('已删除，序号已连续')
+    ElMessage.success(record.fix_image ? '问题图及整改图已删除，序号已重排' : '已删除，序号已连续')
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('删除失败')
+    // 数据可能在其他页面已上传整改图：拉取最新状态后让管理员重新确认一次
+    if (e?.apiCode === 409) {
+      const latest = existingRecords.value.find((r) => r.id === record.id)
+      if (latest && latest.fix_image) {
+        const reason2 = await promptDeleteReason(latest)
+        if (reason2 === null) return
+        await api.deleteRecord(latest.id, { reason: reason2, confirm_cascade: 1 })
+        await loadRecords()
+        ElMessage.success('问题图及整改图已删除，序号已重排')
+        return
+      }
+      ElMessage.warning('该问题图已存在整改图，请刷新后确认删除')
+      return
+    }
+    if (e === 'cancel') return
   }
 }
 
@@ -401,6 +442,27 @@ loadItems()
   border: 1px solid #e2e8f0;
   padding-bottom: 36px;
   transition: box-shadow 0.2s;
+}
+
+.key-tile--paired {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.15);
+}
+
+.key-fixed-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(16, 185, 129, 0.95);
+  color: white;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .key-tile:hover {
